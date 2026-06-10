@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGA - Painel Eletrônico</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        .unit-card {
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid var(--glass-border);
+        }
+        .unit-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.1);
+        }
+        .last-calls-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+        }
+        .main-call {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            padding: 3rem;
+        }
+        .blinking {
+            animation: blink 0.8s infinite;
+        }
+        @keyframes blink {
+            0% { opacity: 1; border-color: var(--accent); }
+            50% { opacity: 0.3; border-color: transparent; }
+            100% { opacity: 1; border-color: var(--accent); }
+        }
+        .back-btn {
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: var(--text-muted);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .back-btn:hover {
+            border-color: var(--text);
+            color: var(--text);
+        }
+    </style>
+</head>
+<body style="height: 100vh; overflow: hidden;">
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <!-- Tela de Seleção de Unidade -->
+    <main id="unitSelectionScreen" class="container animate-fade" style="padding-top: 5rem;">
+        <div style="text-align: center; margin-bottom: 3rem;">
+            <h1 style="font-size: 3rem; margin-bottom: 1rem;">Selecione a Unidade do Painel</h1>
+            <p style="color: var(--text-muted); font-size: 1.2rem;">Escolha o local para exibir as chamadas na TV</p>
+        </div>
+        <div id="unitsGrid" class="grid grid-2">
+            <!-- Injetado via JS -->
+        </div>
+    </main>
+
+    <!-- Tela do Painel Principal (Oculta até selecionar unidade) -->
+    <div id="panelDashboard" style="display: none; height: 100%; flex-direction: column;">
+        <header style="padding: 1.5rem 4rem; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 2rem;">
+                <div class="logo">SGA PAINEL</div>
+                <button id="changeUnitBtn" class="back-btn" onclick="showUnitSelection()">Alterar Unidade</button>
+            </div>
+            <div>
+                <h2 id="currentUnitTitle" style="color: var(--primary); font-size: 1.5rem; font-weight: 700;">Unidade</h2>
+            </div>
+        </header>
+
+        <main class="container" style="flex: 1; display: grid; grid-template-columns: 1.5fr 1fr; gap: 3rem; padding: 0 4rem 4rem 4rem; height: calc(100vh - 100px);">
+            <!-- Chamada Principal -->
+            <section id="mainCard" class="glass-card main-call" style="border: 2px solid var(--glass-border); transition: all 0.3s ease;">
+                <h2 style="color: var(--text-muted); text-transform: uppercase; letter-spacing: 6px; font-size: 1.5rem;">Senha Chamada</h2>
+                <div id="currentCode" class="ticket-badge" style="font-size: 14rem; margin: 1.5rem 0; font-weight: 900; line-height: 1;">----</div>
+                <div id="currentBox" class="box-number" style="font-size: 4rem; background: rgba(99, 102, 241, 0.1); padding: 0.5rem 2rem; border-radius: 16px;">Aguardando...</div>
+            </section>
+
+            <!-- Histórico de Chamadas e Relógio -->
+            <section style="display: flex; flex-direction: column; justify-content: space-between;">
+                <div>
+                    <h2 style="margin-bottom: 1.5rem; color: var(--text-muted); font-size: 1.2rem; letter-spacing: 2px; text-transform: uppercase;">Últimas Chamadas</h2>
+                    <div class="glass-card" style="padding: 1rem;">
+                        <table class="last-calls" style="margin: 0;">
+                            <thead>
+                                <tr>
+                                    <th>Senha</th>
+                                    <th>Guichê / Local</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyBody">
+                                <tr>
+                                    <td colspan="2" style="text-align: center; color: var(--text-muted); border-radius: 12px;">Nenhuma chamada anterior</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div class="glass-card" style="padding: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <p style="color: var(--text-muted); font-size: 0.8rem; letter-spacing: 2px;">DATA</p>
+                        <p id="currentDate" style="font-weight: 600; font-size: 1.2rem;"></p>
+                    </div>
+                    <div style="text-align: right;">
+                        <p style="color: var(--text-muted); font-size: 0.8rem; letter-spacing: 2px;">HORA ATUAL</p>
+                        <p id="currentTime" style="font-weight: 800; font-size: 2.2rem; background: linear-gradient(to right, #818cf8, #f43f5e); -webkit-background-clip: text; -webkit-text-fill-color: transparent;"></p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Áudios de Notificação -->
+    <audio id="alertSound" src="https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3"></audio>
+
+    <script>
+        const socket = io();
+        const history = [];
+        let currentUnitId = null;
+        let units = [];
+        const alertSound = document.getElementById('alertSound');
+
+        function updateDateTime() {
+            const now = new Date();
+            document.getElementById('currentDate').innerText = now.toLocaleDateString('pt-BR');
+            document.getElementById('currentTime').innerText = now.toLocaleTimeString('pt-BR');
+        }
+        setInterval(updateDateTime, 1000);
+        updateDateTime();
+
+        // Carregar unidades
+        async function loadUnits() {
+            try {
+                const res = await fetch('/api/units');
+                units = await res.json();
+                
+                const urlParams = new URLSearchParams(window.location.search);
+                const queryUnitId = urlParams.get('unitId');
+                
+                if (queryUnitId && units.some(u => u.id === queryUnitId)) {
+                    selectUnit(queryUnitId, true); // Ocultar botão se fixado por query param
+                } else {
+                    renderUnitSelection();
+                }
+            } catch (err) {
+                console.error("Erro ao carregar unidades:", err);
+            }
+        }
+
+        function renderUnitSelection() {
+            const grid = document.getElementById('unitsGrid');
+            grid.innerHTML = units.map(u => `
+                <div class="glass-card unit-card" style="padding: 3rem; text-align: center;" onclick="selectUnit('${u.id}')">
+                    <h2 style="margin-bottom: 1rem; font-size: 2rem; color: var(--text);">${u.name}</h2>
+                    <p style="color: var(--text-muted); font-size: 1.1rem;">${u.address}</p>
+                </div>
+            `).join('');
+            
+            document.getElementById('unitSelectionScreen').style.display = 'block';
+            document.getElementById('panelDashboard').style.display = 'none';
+        }
+
+        function selectUnit(unitId, isLocked = false) {
+            currentUnitId = unitId;
+            const unit = units.find(u => u.id === unitId);
+            
+            document.getElementById('currentUnitTitle').innerText = unit.name.toUpperCase();
+            document.getElementById('unitSelectionScreen').style.display = 'none';
+            document.getElementById('panelDashboard').style.display = 'flex';
+            
+            if (isLocked) {
+                document.getElementById('changeUnitBtn').style.display = 'none';
+            } else {
+                document.getElementById('changeUnitBtn').style.display = 'block';
+            }
+
+            // Conectar à sala de WebSocket da unidade correspondente
+            socket.emit('join_unit', { unitId: currentUnitId });
+        }
+
+        function showUnitSelection() {
+            renderUnitSelection();
+        }
+
+        // WebSocket listener
+        socket.on('ticket_called', (ticket) => {
+            // Ignora se for de outra unidade (prevenção dupla, já que o socket faz room join)
+            if (ticket.unitId !== currentUnitId) return;
+
+            const codeEl = document.getElementById('currentCode');
+            const boxEl = document.getElementById('currentBox');
+            const mainCard = document.getElementById('mainCard');
+            
+            codeEl.innerText = ticket.code;
+            boxEl.innerText = `GUICHÊ ${ticket.boxNumber}`;
+            
+            // Efeitos visuais avançados
+            mainCard.classList.add('blinking');
+            setTimeout(() => mainCard.classList.remove('blinking'), 6000);
+
+            // Som de Alerta
+            alertSound.currentTime = 0;
+            alertSound.play().catch(e => console.log('Interação prévia necessária para tocar áudio.'));
+
+            // Voz (Web Speech API) - Chamada Inteligente
+            setTimeout(() => {
+                const msg = new SpeechSynthesisUtterance();
+                // Soletrar a senha para melhor compreensão, ex: "P zero zero dois"
+                const spelledCode = ticket.code.split('').map(char => isNaN(char) ? char : ' ' + char).join(' ');
+                msg.text = `Senha, ${spelledCode}, dirigir-se ao guichê ${ticket.boxNumber}`;
+                msg.lang = 'pt-BR';
+                msg.rate = 0.85;
+                window.speechSynthesis.speak(msg);
+            }, 800);
+
+            // Atualizar Histórico
+            updateHistory(ticket);
+        });
+
+        function updateHistory(ticket) {
+            // Evitar duplicados imediatos de recall na lista histórica
+            if (history.length > 0 && history[0].id === ticket.id) {
+                return; 
+            }
+            
+            history.unshift(ticket);
+            if (history.length > 6) history.pop();
+
+            const body = document.getElementById('historyBody');
+            body.innerHTML = history.slice(1).map(t => `
+                <tr class="animate-fade">
+                    <td style="font-weight: 800; font-size: 1.5rem; color: var(--text);">${t.code}</td>
+                    <td style="color: var(--primary); font-size: 1.3rem; font-weight: 700;">GUICHÊ ${t.boxNumber}</td>
+                </tr>
+            `).join('');
+            
+            if (history.length <= 1) {
+                body.innerHTML = `<tr><td colspan="2" style="text-align: center; color: var(--text-muted); border-radius: 12px;">Nenhuma chamada anterior</td></tr>`;
+            }
+        }
+
+        window.onload = loadUnits;
+    </script>
+</body>
+</html>

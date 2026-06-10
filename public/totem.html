@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGA - Totem de Autoatendimento</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <style>
+        .unit-card {
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid var(--glass-border);
+        }
+        .unit-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.1);
+        }
+        .back-btn {
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: var(--text-muted);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .back-btn:hover {
+            border-color: var(--text);
+            color: var(--text);
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <header>
+        <div class="logo">SGA TOTEM</div>
+        <div style="display: flex; gap: 1.5rem; align-items: center;">
+            <button id="changeUnitBtn" class="back-btn" style="display: none;" onclick="showUnitSelection()">Alterar Unidade</button>
+            <div id="clock" style="font-weight: 600;">--:--:--</div>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Tela de Seleção de Unidade -->
+        <section id="unitSelectionScreen" class="animate-fade">
+            <div style="text-align: center; margin-bottom: 3rem;">
+                <h1 style="font-size: 2.5rem; margin-bottom: 1rem;">Selecione a Unidade</h1>
+                <p style="color: var(--text-muted);">Escolha o local onde deseja ser atendido</p>
+            </div>
+            <div id="unitsGrid" class="grid grid-2">
+                <!-- Injetado via JS -->
+            </div>
+        </section>
+
+        <!-- Tela de Serviços (Surgirá após escolher unidade) -->
+        <section id="servicesScreen" style="display: none;" class="animate-fade">
+            <div style="text-align: center; margin-bottom: 3rem;">
+                <h1 id="selectedUnitName" style="font-size: 2.2rem; margin-bottom: 0.5rem; color: var(--primary);">Unidade</h1>
+                <p style="color: var(--text-muted);">Selecione o serviço desejado para retirar sua senha</p>
+            </div>
+
+            <div class="grid grid-2">
+                <div class="glass-card" style="padding: 2.5rem; text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <h2 style="margin-bottom: 1rem;">Atendimento Geral</h2>
+                        <p style="color: var(--text-muted); margin-bottom: 2rem;">Serviços gerais, pagamentos, informações rápidas e recepção.</p>
+                    </div>
+                    <button onclick="issueTicket('GERAL', false)" class="btn btn-primary" style="width: 100%;">RETIRAR SENHA</button>
+                </div>
+
+                <div class="glass-card" style="padding: 2.5rem; text-align: center; display: flex; flex-direction: column; justify-content: space-between;">
+                    <div>
+                        <h2 style="margin-bottom: 1rem;">Gerência / Negócios</h2>
+                        <p style="color: var(--text-muted); margin-bottom: 2rem;">Contratos, abertura de cadastros, negociações e resoluções complexas.</p>
+                    </div>
+                    <button onclick="issueTicket('GERENCIA', false)" class="btn btn-primary" style="width: 100%;">RETIRAR SENHA</button>
+                </div>
+            </div>
+
+            <div style="margin-top: 2rem; display: flex; justify-content: center;">
+                <div class="glass-card" style="padding: 2rem; max-width: 600px; width: 100%; border: 1px solid var(--accent);">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 2rem; flex-wrap: wrap;">
+                        <div>
+                            <h2 style="color: var(--accent); margin-bottom: 0.5rem;">Atendimento Prioritário</h2>
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Idosos (60+), Gestantes, Lactantes, Autistas e Pessoas com Deficiência.</p>
+                        </div>
+                        <button onclick="issueTicket('PRIORITARIO', true)" class="btn btn-priority">SENHA PRIORITÁRIA</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Modal de Impressão (Simulado) -->
+    <div id="ticketModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; align-items: center; justify-content: center; backdrop-filter: blur(8px);">
+        <div class="glass-card" style="width: 380px; padding: 2.5rem; text-align: center; border: 2px solid var(--primary);">
+            <p style="color: var(--text-muted); text-transform: uppercase; font-size: 0.85rem; letter-spacing: 2px;">Sua Senha é:</p>
+            <div id="ticketCode" class="ticket-badge" style="font-size: 5rem; margin: 1.5rem 0; font-weight: 900; background: linear-gradient(to right, #818cf8, #f43f5e); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">A001</div>
+            <p id="ticketType" style="font-weight: 800; font-size: 1.2rem; color: var(--primary); margin-bottom: 0.5rem;">GERAL</p>
+            <p id="ticketUnit" style="font-size: 0.9rem; margin-bottom: 0.5rem; font-weight: 600;"></p>
+            <p id="ticketDate" style="color: var(--text-muted); font-size: 0.8rem;"></p>
+            <hr style="border: 0; border-top: 1px dashed var(--glass-border); margin: 1.5rem 0;">
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Acompanhe a chamada no painel de TV.</p>
+            <button onclick="closeModal()" class="btn btn-primary" style="margin-top: 2rem; width: 100%;">ENTENDIDO</button>
+        </div>
+    </div>
+
+    <script>
+        let currentUnitId = null;
+        let units = [];
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toLocaleTimeString('pt-BR');
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Carregar unidades ao iniciar
+        async function loadUnits() {
+            try {
+                const res = await fetch('/api/units');
+                units = await res.json();
+                
+                // Verificar se a unidade está fixada na URL (?unitId=X)
+                const urlParams = new URLSearchParams(window.location.search);
+                const queryUnitId = urlParams.get('unitId');
+                
+                if (queryUnitId && units.some(u => u.id === queryUnitId)) {
+                    selectUnit(queryUnitId, true); // Ocultar botão de trocar unidade se fixado na query
+                } else {
+                    renderUnitSelection();
+                }
+            } catch (err) {
+                console.error("Erro ao carregar unidades:", err);
+            }
+        }
+
+        function renderUnitSelection() {
+            const grid = document.getElementById('unitsGrid');
+            grid.innerHTML = units.map(u => `
+                <div class="glass-card unit-card" style="padding: 2.5rem; text-align: center;" onclick="selectUnit('${u.id}')">
+                    <h2 style="margin-bottom: 1rem; color: var(--text);">${u.name}</h2>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">${u.address}</p>
+                </div>
+            `).join('');
+            
+            document.getElementById('unitSelectionScreen').style.display = 'block';
+            document.getElementById('servicesScreen').style.display = 'none';
+            document.getElementById('changeUnitBtn').style.display = 'none';
+        }
+
+        function selectUnit(unitId, isLocked = false) {
+            currentUnitId = unitId;
+            const unit = units.find(u => u.id === unitId);
+            
+            document.getElementById('selectedUnitName').innerText = unit.name;
+            document.getElementById('unitSelectionScreen').style.display = 'none';
+            document.getElementById('servicesScreen').style.display = 'block';
+            
+            if (!isLocked) {
+                document.getElementById('changeUnitBtn').style.display = 'block';
+            }
+        }
+
+        function showUnitSelection() {
+            renderUnitSelection();
+        }
+
+        async function issueTicket(type, isPriority) {
+            if (!currentUnitId) return;
+            
+            try {
+                const response = await fetch('/api/tickets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ unitId: currentUnitId, type, isPriority })
+                });
+                
+                if (!response.ok) throw new Error("Erro na requisição");
+                const ticket = await response.json();
+                showTicket(ticket);
+            } catch (err) {
+                alert('Erro ao emitir senha. Verifique a conexão com o servidor.');
+            }
+        }
+
+        function showTicket(ticket) {
+            const unit = units.find(u => u.id === ticket.unitId);
+            document.getElementById('ticketCode').innerText = ticket.code;
+            document.getElementById('ticketType').innerText = ticket.isPriority ? 'PRIORITÁRIO' : `SERVIÇO: ${ticket.type}`;
+            document.getElementById('ticketUnit').innerText = unit ? unit.name : '';
+            document.getElementById('ticketDate').innerText = new Date(ticket.createdAt).toLocaleString('pt-BR');
+            document.getElementById('ticketModal').style.display = 'flex';
+            
+            // Som de impressão simulado
+            const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3');
+            audio.play().catch(e => {});
+
+            // Auto-fechar em 5 segundos
+            setTimeout(closeModal, 5000);
+        }
+
+        function closeModal() {
+            document.getElementById('ticketModal').style.display = 'none';
+        }
+
+        window.onload = loadUnits;
+    </script>
+</body>
+</html>

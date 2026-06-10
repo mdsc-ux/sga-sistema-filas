@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGA - Painel Administrativo</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <!-- CDN para Gráficos Ricos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .admin-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+        @media (max-width: 1024px) {
+            .admin-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .form-card {
+            padding: 2rem;
+            border: 1px solid var(--glass-border);
+        }
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .form-control {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: white;
+            font-size: 0.95rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        .form-control:focus {
+            border-color: var(--primary);
+            background: rgba(255,255,255,0.1);
+        }
+        .stats-card-gradient {
+            background: linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(244,63,94,0.1) 100%);
+            border: 1px solid var(--primary);
+        }
+        .table-container {
+            overflow-x: auto;
+            max-height: 400px;
+            margin-top: 1rem;
+        }
+        .admin-table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+        }
+        .admin-table th {
+            padding: 1rem;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .admin-table td {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(255,255,255,0.02);
+            font-size: 0.9rem;
+        }
+        .btn-export {
+            background: #10b981;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+        }
+        .btn-export:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(16,185,129,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <header>
+        <div class="logo">SGA ADMIN COCKPIT</div>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <button onclick="exportCSV()" class="btn btn-export">Exportar CSV</button>
+            <span style="font-size: 0.85rem; color: var(--text-muted);">Real-time Sync</span>
+        </div>
+    </header>
+
+    <main class="container" style="max-width: 1400px;">
+        <!-- Banner de Métricas Consolidadas -->
+        <section class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 3rem;">
+            <div class="glass-card stats-card-gradient" style="padding: 1.5rem; text-align: center;">
+                <p style="font-size: 0.8rem; color: var(--text-muted); letter-spacing: 1px;">TOTAL ATENDIMENTOS</p>
+                <h3 id="totalTickets" style="font-size: 2.8rem; font-weight: 900;">0</h3>
+            </div>
+            <div class="glass-card" style="padding: 1.5rem; text-align: center;">
+                <p style="font-size: 0.8rem; color: var(--text-muted); letter-spacing: 1px;">EM ESPERA</p>
+                <h3 id="waitingCount" style="font-size: 2.8rem; font-weight: 900; color: var(--primary);">0</h3>
+            </div>
+            <div class="glass-card" style="padding: 1.5rem; text-align: center;">
+                <p style="font-size: 0.8rem; color: var(--text-muted); letter-spacing: 1px;">MÉDIA ESPERA</p>
+                <h3 id="avgWaitTime" style="font-size: 2.8rem; font-weight: 900; color: var(--accent);">0<small style="font-size: 1rem; font-weight: 400;">m</small></h3>
+            </div>
+            <div class="glass-card" style="padding: 1.5rem; text-align: center;">
+                <p style="font-size: 0.8rem; color: var(--text-muted); letter-spacing: 1px;">MÉDIA ATENDIMENTO</p>
+                <h3 id="avgServiceTime" style="font-size: 2.8rem; font-weight: 900; color: #10b981;">0<small style="font-size: 1rem; font-weight: 400;">m</small></h3>
+            </div>
+        </section>
+
+        <!-- Gráficos de Gestão -->
+        <section class="admin-grid" style="margin-bottom: 3rem;">
+            <div class="glass-card" style="padding: 2rem;">
+                <h3 style="margin-bottom: 1.5rem; font-size: 1.1rem; color: var(--text-muted); text-transform: uppercase;">Tempos Médios de Espera por Unidade</h3>
+                <div style="height: 300px; position: relative;">
+                    <canvas id="unitChart"></canvas>
+                </div>
+            </div>
+            <div class="glass-card" style="padding: 2rem;">
+                <h3 style="margin-bottom: 1.5rem; font-size: 1.1rem; color: var(--text-muted); text-transform: uppercase;">Desempenho de Operadores (Atendimentos)</h3>
+                <div style="height: 300px; position: relative;">
+                    <canvas id="operatorChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Seção de Cadastro e Gestão Física -->
+        <section class="admin-grid" style="margin-bottom: 3rem;">
+            <!-- Cadastro de Operador -->
+            <div class="glass-card form-card">
+                <h3 style="margin-bottom: 1.5rem; color: var(--primary);">Cadastrar Operador</h3>
+                <form id="operatorForm" onsubmit="registerOperator(event)">
+                    <div class="form-group">
+                        <label for="opName">Nome Completo</label>
+                        <input type="text" id="opName" class="form-control" placeholder="Ex: Lucas Mendes" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="opUsername">Usuário (Login)</label>
+                        <input type="text" id="opUsername" class="form-control" placeholder="Ex: lucas" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="opRole">Cargo/Função</label>
+                        <select id="opRole" class="form-control">
+                            <option value="OPERATOR">Atendente / Operador</option>
+                            <option value="ADMIN">Administrador</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="opUnit">Unidade de Alocação</label>
+                        <select id="opUnit" class="form-control" required>
+                            <!-- Injetado via JS -->
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">CADASTRAR OPERADOR</button>
+                </form>
+            </div>
+
+            <!-- Cadastro de Unidade -->
+            <div class="glass-card form-card">
+                <h3 style="margin-bottom: 1.5rem; color: var(--accent);">Criar Nova Unidade</h3>
+                <form id="unitForm" onsubmit="registerUnit(event)">
+                    <div class="form-group">
+                        <label for="unitName">Nome da Unidade</label>
+                        <input type="text" id="unitName" class="form-control" placeholder="Ex: Unidade Zona Norte" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="unitAddress">Endereço Completo</label>
+                        <input type="text" id="unitAddress" class="form-control" placeholder="Ex: Av. Brasil, 450" required>
+                    </div>
+                    <button type="submit" class="btn btn-priority" style="width: 100%; margin-top: 3.8rem;">CRIAR UNIDADE</button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Histórico e Logs Gerais -->
+        <section class="glass-card" style="padding: 2rem; margin-bottom: 3rem;">
+            <h3 style="color: var(--text-muted); text-transform: uppercase; font-size: 1.1rem;">Lista Geral de Senhas Emitidas</h3>
+            <div class="table-container">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>Senha</th>
+                            <th>Unidade</th>
+                            <th>Serviço</th>
+                            <th>Prioridade</th>
+                            <th>Tipo</th>
+                            <th>Espera</th>
+                            <th>Atendimento</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ticketsLogBody">
+                        <tr>
+                            <td colspan="8" style="text-align: center; color: var(--text-muted);">Nenhuma senha gerada no sistema.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const socket = io();
+        let unitChartInstance = null;
+        let operatorChartInstance = null;
+        let rawTicketsData = [];
+
+        async function init() {
+            // Join admin room
+            socket.emit('join_admin');
+
+            await loadConfiguration();
+            await loadStats();
+        }
+
+        async function loadConfiguration() {
+            try {
+                // Carregar unidades nos selects de cadastro
+                const res = await fetch('/api/units');
+                const units = await res.json();
+                
+                const selectOpUnit = document.getElementById('opUnit');
+                selectOpUnit.innerHTML = units.map(u => `
+                    <option value="${u.id}">${u.name}</option>
+                `).join('');
+            } catch (err) {
+                console.error("Erro ao carregar unidades de config:", err);
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/admin/stats');
+                const stats = await res.json();
+
+                // 1. Atualizar contadores
+                document.getElementById('totalTickets').innerText = stats.summary.totalTickets;
+                document.getElementById('waitingCount').innerText = stats.summary.waiting;
+                document.getElementById('avgWaitTime').innerHTML = `${stats.summary.averageWaitTime}<small style="font-size: 1rem; font-weight: 400;">m</small>`;
+                document.getElementById('avgServiceTime').innerHTML = `${stats.summary.averageServiceTime}<small style="font-size: 1rem; font-weight: 400;">m</small>`;
+
+                rawTicketsData = stats.rawTickets;
+
+                // 2. Renderizar Tabela de Logs
+                const tbody = document.getElementById('ticketsLogBody');
+                if (stats.rawTickets.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">Nenhuma senha gerada no sistema.</td></tr>`;
+                } else {
+                    tbody.innerHTML = stats.rawTickets.map(t => {
+                        let statusColor = 'color: var(--text-muted);';
+                        if (t.status === 'CALLED') statusColor = 'color: var(--accent); font-weight: 600;';
+                        if (t.status === 'FINISHED') statusColor = 'color: #10b981; font-weight: 600;';
+                        if (t.status === 'CANCELED') statusColor = 'color: #ef4444; text-decoration: line-through;';
+
+                        return `
+                            <tr>
+                                <td style="font-weight: 800;">${t.code}</td>
+                                <td>${t.unit}</td>
+                                <td>${t.type}</td>
+                                <td>
+                                    <span class="badge-status ${t.isPriority ? 'badge-priority' : 'badge-normal'}">
+                                        ${t.isPriority ? 'PRIO' : 'NORMAL'}
+                                    </span>
+                                </td>
+                                <td>${t.isRemote ? 'Remoto' : 'Presencial'}</td>
+                                <td>${t.waitTime} min</td>
+                                <td>${t.serviceTime} min</td>
+                                <td style="${statusColor}">${t.status}</td>
+                            </tr>
+                        `;
+                    }).join('');
+                }
+
+                // 3. Renderizar Gráficos
+                renderCharts(stats.units, stats.operators);
+
+            } catch (err) {
+                console.error("Erro ao carregar dados administrativos:", err);
+            }
+        }
+
+        function renderCharts(unitsData, operatorsData) {
+            // Tema escuro para as fontes do gráfico
+            Chart.defaults.color = '#94a3b8';
+            Chart.defaults.font.family = 'Outfit';
+
+            // Gráfico de Unidades (Barra)
+            const unitLabels = unitsData.map(u => u.name);
+            const unitWaitTimes = unitsData.map(u => u.avgWait);
+
+            if (unitChartInstance) {
+                unitChartInstance.destroy();
+            }
+
+            const ctxUnit = document.getElementById('unitChart').getContext('2d');
+            unitChartInstance = new Chart(ctxUnit, {
+                type: 'bar',
+                data: {
+                    labels: unitLabels,
+                    datasets: [{
+                        label: 'Tempo Médio de Espera (min)',
+                        data: unitWaitTimes,
+                        backgroundColor: 'rgba(99, 102, 241, 0.6)',
+                        borderColor: '#6366f1',
+                        borderWidth: 2,
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(255,255,255,0.05)' }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+
+            // Gráfico de Operadores (Doughnut)
+            const opLabels = operatorsData.map(o => o.operatorName);
+            const opFinishedCounts = operatorsData.map(o => o.finishedCount);
+
+            if (operatorChartInstance) {
+                operatorChartInstance.destroy();
+            }
+
+            const ctxOp = document.getElementById('operatorChart').getContext('2d');
+            operatorChartInstance = new Chart(ctxOp, {
+                type: 'doughnut',
+                data: {
+                    labels: opLabels,
+                    datasets: [{
+                        data: opFinishedCounts,
+                        backgroundColor: [
+                            'rgba(99, 102, 241, 0.7)',
+                            'rgba(244, 63, 94, 0.7)',
+                            'rgba(16, 185, 129, 0.7)',
+                            'rgba(245, 158, 11, 0.7)',
+                            'rgba(139, 92, 246, 0.7)'
+                        ],
+                        borderColor: '#0f172a',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right' }
+                    }
+                }
+            });
+        }
+
+        async function registerOperator(e) {
+            e.preventDefault();
+            const name = document.getElementById('opName').value;
+            const username = document.getElementById('opUsername').value;
+            const role = document.getElementById('opRole').value;
+            const unitId = document.getElementById('opUnit').value;
+
+            try {
+                const response = await fetch('/api/operators', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, username, role, unitId })
+                });
+
+                if (response.ok) {
+                    alert('Operador cadastrado com sucesso!');
+                    document.getElementById('operatorForm').reset();
+                    await loadStats();
+                } else {
+                    const err = await response.json();
+                    alert(err.error || 'Erro ao cadastrar operador.');
+                }
+            } catch (err) {
+                alert('Erro de rede.');
+            }
+        }
+
+        async function registerUnit(e) {
+            e.preventDefault();
+            const name = document.getElementById('unitName').value;
+            const address = document.getElementById('unitAddress').value;
+
+            try {
+                const response = await fetch('/api/units', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, address })
+                });
+
+                if (response.ok) {
+                    alert('Unidade criada com sucesso!');
+                    document.getElementById('unitForm').reset();
+                    await loadConfiguration();
+                    await loadStats();
+                } else {
+                    const err = await response.json();
+                    alert(err.error || 'Erro ao criar unidade.');
+                }
+            } catch (err) {
+                alert('Erro de rede.');
+            }
+        }
+
+        function exportCSV() {
+            if (rawTicketsData.length === 0) {
+                alert("Nenhum dado para exportar.");
+                return;
+            }
+
+            // Cabeçalhos
+            const headers = ['Senha', 'Unidade', 'Servico', 'Prioridade', 'Tipo', 'Tempo Espera (min)', 'Tempo Atendimento (min)', 'Status'];
+            
+            // Converter objetos para linhas CSV
+            const csvRows = [
+                headers.join(','),
+                ...rawTicketsData.map(t => [
+                    t.code,
+                    `"${t.unit}"`,
+                    t.type,
+                    t.isPriority ? 'PRIO' : 'NORMAL',
+                    t.isRemote ? 'REMOTO' : 'PRESENCIAL',
+                    t.waitTime,
+                    t.serviceTime,
+                    t.status
+                ].join(','))
+            ];
+
+            const csvString = csvRows.join('\n');
+            const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            
+            link.setAttribute('href', url);
+            link.setAttribute('download', `SGA_Relatorio_Senhas_${Date.now()}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // WebSocket listener para atualizar a tela automaticamente
+        socket.on('admin_update', () => {
+            loadStats();
+        });
+
+        window.onload = init;
+    </script>
+</body>
+</html>

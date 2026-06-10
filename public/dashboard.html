@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGA - Painel do Atendente</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        .login-card {
+            max-width: 450px;
+            width: 100%;
+            padding: 3rem;
+            margin: 10vh auto;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .form-control {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(255,255,255,0.1);
+        }
+        .badge-status {
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .badge-priority {
+            background: rgba(244, 63, 94, 0.2);
+            color: var(--accent);
+        }
+        .badge-normal {
+            background: rgba(99, 102, 241, 0.2);
+            color: var(--primary);
+        }
+        .logout-btn {
+            background: transparent;
+            border: 1px solid var(--glass-border);
+            color: var(--text-muted);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .logout-btn:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <!-- Tela de Login -->
+    <div id="loginScreen" class="animate-fade">
+        <div class="glass-card login-card" style="text-align: center;">
+            <div class="logo" style="font-size: 2.5rem; margin-bottom: 2rem;">SGA LOGIN</div>
+            <p style="color: var(--text-muted); margin-bottom: 2rem;">Entre com suas credenciais de operador</p>
+            
+            <div class="form-group">
+                <label for="username">Usuário</label>
+                <input type="text" id="username" class="form-control" placeholder="Ex: joao, maria, admin" value="joao">
+            </div>
+
+            <div class="form-group">
+                <label for="boxNumber">Número do Guichê</label>
+                <input type="number" id="boxNumber" class="form-control" placeholder="Número do Guichê" value="1" min="1" max="50">
+            </div>
+
+            <button onclick="handleLogin()" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">ACESSAR PAINEL</button>
+            <div id="loginError" style="color: var(--accent); margin-top: 1rem; font-size: 0.9rem; display: none;"></div>
+        </div>
+    </div>
+
+    <!-- Tela Principal do Operador (Oculta até login) -->
+    <div id="operatorDashboard" style="display: none;">
+        <header>
+            <div style="display: flex; align-items: center; gap: 1.5rem;">
+                <div class="logo">SGA OPERADOR</div>
+                <div id="operatorUnitName" style="background: rgba(99,102,241,0.15); padding: 0.25rem 1rem; border-radius: 20px; font-size: 0.9rem; font-weight: 600; color: var(--primary);">Unidade</div>
+            </div>
+            
+            <div style="display: flex; gap: 1.5rem; align-items: center;">
+                <div style="text-align: right;">
+                    <p id="operatorName" style="font-weight: 600;"></p>
+                    <p id="operatorBoxDisplay" style="font-size: 0.8rem; color: var(--text-muted);"></p>
+                </div>
+                <button onclick="handleLogout()" class="logout-btn">Sair</button>
+            </div>
+        </header>
+
+        <main class="container">
+            <div class="grid grid-2">
+                <!-- Controle de Chamada -->
+                <section class="glass-card" style="padding: 2.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 400px; border: 1px solid var(--glass-border);">
+                    <h2 style="margin-bottom: 1.5rem; color: var(--text-muted); font-size: 1.2rem; letter-spacing: 1px; text-transform: uppercase;">Atendimento Atual</h2>
+                    
+                    <div id="currentServing" class="ticket-badge" style="font-size: 8rem; margin: 1rem 0; line-height: 1; font-weight: 900;">----</div>
+                    <p id="servingStatus" style="color: var(--text-muted); margin-bottom: 2.5rem; text-align: center; font-size: 1.1rem;">Aguardando chamada...</p>
+                    
+                    <!-- Botões de Ação do Guichê -->
+                    <div style="display: flex; flex-direction: column; gap: 1rem; width: 100%;">
+                        <!-- Modo ocioso: Chamar Próximo -->
+                        <button id="callBtn" onclick="callNext()" class="btn btn-primary" style="width: 100%;">CHAMAR PRÓXIMO</button>
+                        
+                        <!-- Modo em atendimento: Rechamar, Finalizar, Cancelar -->
+                        <div id="activeActions" style="display: none; width: 100%;">
+                            <div style="display: flex; gap: 1rem; margin-bottom: 1rem;">
+                                <button onclick="recallCurrent()" class="btn btn-primary" style="flex: 1; background: #818cf8;">RECHAMAR</button>
+                                <button onclick="cancelService()" class="btn" style="background: var(--accent); color: white; flex: 1;">NÃO APARECEU</button>
+                            </div>
+                            <button onclick="finishService()" class="btn" style="background: #10b981; color: white; width: 100%;">FINALIZAR ATENDIMENTO</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Estatísticas e Fila de Espera -->
+                <section style="display: flex; flex-direction: column; gap: 2rem;">
+                    <!-- Cards Rápidos de Status -->
+                    <div class="grid" style="grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                        <div class="glass-card" style="padding: 1.5rem; text-align: center;">
+                            <p style="font-size: 0.85rem; color: var(--text-muted); letter-spacing: 1px;">NA FILA</p>
+                            <h3 id="waitingCount" style="font-size: 2.5rem; font-weight: 800; color: var(--primary);">0</h3>
+                        </div>
+                        <div class="glass-card" style="padding: 1.5rem; text-align: center;">
+                            <p style="font-size: 0.85rem; color: var(--text-muted); letter-spacing: 1px;">ESPERA MÉDIA</p>
+                            <h3 id="avgWait" style="font-size: 2.5rem; font-weight: 800; color: var(--accent);">0<small style="font-size: 1rem; font-weight: 400;"> min</small></h3>
+                        </div>
+                    </div>
+
+                    <!-- Fila em Tempo Real -->
+                    <div class="glass-card" style="padding: 2rem; flex: 1; min-height: 280px; display: flex; flex-direction: column;">
+                        <h3 style="margin-bottom: 1.5rem; font-size: 1.1rem; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase;">Fila de Espera da Unidade</h3>
+                        <div style="flex: 1; overflow-y: auto; max-height: 250px;">
+                            <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                                <thead style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--glass-border);">
+                                    <tr>
+                                        <th style="padding: 0.5rem 0;">Senha</th>
+                                        <th style="padding: 0.5rem 0;">Serviço</th>
+                                        <th style="padding: 0.5rem 0;">Prioridade</th>
+                                        <th style="padding: 0.5rem 0; text-align: right;">Espera</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="waitingList">
+                                    <tr>
+                                        <td colspan="4" style="text-align: center; padding: 2rem 0; color: var(--text-muted);">Fila vazia</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const socket = io();
+        let session = null; // Contém { operator, unit }
+        let currentTicket = null;
+        let boxNumber = 1;
+
+        async function handleLogin() {
+            const usernameInput = document.getElementById('username').value.trim();
+            const boxInput = document.getElementById('boxNumber').value;
+            const errorDiv = document.getElementById('loginError');
+
+            if (!usernameInput) {
+                showError("Por favor, digite o usuário.");
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: usernameInput })
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    showError(err.error || "Erro de login.");
+                    return;
+                }
+
+                session = await response.json();
+                boxNumber = boxInput || 1;
+
+                // Salvar dados na sessão do navegador
+                sessionStorage.setItem('sga_session', JSON.stringify({ session, boxNumber }));
+
+                setupDashboard();
+            } catch (err) {
+                showError("Não foi possível conectar ao servidor.");
+            }
+        }
+
+        function setupDashboard() {
+            document.getElementById('loginScreen').style.display = 'none';
+            document.getElementById('operatorDashboard').style.display = 'block';
+
+            document.getElementById('operatorName').innerText = session.operator.name;
+            document.getElementById('operatorBoxDisplay').innerText = `Guichê ${boxNumber} (${session.operator.role})`;
+            document.getElementById('operatorUnitName').innerText = session.unit.name;
+
+            // Inscrever-se na sala de WebSocket da unidade
+            socket.emit('join_unit', { unitId: session.unit.id });
+
+            updateStats();
+            restoreActiveTicket();
+        }
+
+        function restoreActiveTicket() {
+            // Verifica se o atendente já possui um atendimento ativo salvo no localStorage
+            const savedTicket = localStorage.getItem(`active_ticket_${session.operator.id}`);
+            if (savedTicket) {
+                currentTicket = JSON.parse(savedTicket);
+                displayActiveTicket(currentTicket);
+            }
+        }
+
+        function displayActiveTicket(ticket) {
+            document.getElementById('currentServing').innerText = ticket.code;
+            document.getElementById('servingStatus').innerText = `Atendendo no Guichê ${boxNumber} (Serviço: ${ticket.type})`;
+            document.getElementById('callBtn').style.display = 'none';
+            document.getElementById('activeActions').style.display = 'block';
+        }
+
+        function clearActiveTicket() {
+            currentTicket = null;
+            localStorage.removeItem(`active_ticket_${session.operator.id}`);
+            document.getElementById('currentServing').innerText = '----';
+            document.getElementById('servingStatus').innerText = 'Aguardando chamada...';
+            document.getElementById('callBtn').style.display = 'block';
+            document.getElementById('activeActions').style.display = 'none';
+        }
+
+        function showError(msg) {
+            const errorDiv = document.getElementById('loginError');
+            errorDiv.innerText = msg;
+            errorDiv.style.display = 'block';
+        }
+
+        function handleLogout() {
+            sessionStorage.removeItem('sga_session');
+            if (session) {
+                localStorage.removeItem(`active_ticket_${session.operator.id}`);
+            }
+            session = null;
+            document.getElementById('loginScreen').style.display = 'block';
+            document.getElementById('operatorDashboard').style.display = 'none';
+        }
+
+        async function callNext() {
+            if (!session) return;
+            
+            try {
+                const response = await fetch('/api/tickets/call', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        unitId: session.unit.id,
+                        operatorId: session.operator.id,
+                        boxNumber: boxNumber
+                    })
+                });
+
+                if (response.status === 404) {
+                    alert('Nenhuma senha aguardando nesta unidade.');
+                    return;
+                }
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    alert(err.error || 'Erro ao chamar próximo.');
+                    return;
+                }
+
+                currentTicket = await response.json();
+                localStorage.setItem(`active_ticket_${session.operator.id}`, JSON.stringify(currentTicket));
+                displayActiveTicket(currentTicket);
+                updateStats();
+            } catch (err) {
+                alert('Erro de rede ao tentar chamar.');
+            }
+        }
+
+        async function recallCurrent() {
+            if (!currentTicket) return;
+            
+            try {
+                await fetch(`/api/tickets/${currentTicket.id}/recall`, { method: 'POST' });
+            } catch (err) {
+                console.error("Erro ao rechamar ticket:", err);
+            }
+        }
+
+        async function finishService() {
+            if (!currentTicket) return;
+
+            try {
+                const res = await fetch(`/api/tickets/${currentTicket.id}/finish`, { method: 'PUT' });
+                if (res.ok) {
+                    clearActiveTicket();
+                    updateStats();
+                } else {
+                    alert('Erro ao finalizar atendimento.');
+                }
+            } catch (err) {
+                alert('Erro de rede.');
+            }
+        }
+
+        async function cancelService() {
+            if (!currentTicket) return;
+
+            if (!confirm('Deseja realmente cancelar este atendimento (No-Show)?')) return;
+
+            try {
+                const res = await fetch(`/api/tickets/${currentTicket.id}/cancel`, { method: 'PUT' });
+                if (res.ok) {
+                    clearActiveTicket();
+                    updateStats();
+                } else {
+                    alert('Erro ao cancelar atendimento.');
+                }
+            } catch (err) {
+                alert('Erro de rede.');
+            }
+        }
+
+        async function updateStats() {
+            if (!session) return;
+
+            try {
+                // Estatísticas
+                const statsRes = await fetch(`/api/tickets/stats?unitId=${session.unit.id}`);
+                const stats = await statsRes.json();
+                document.getElementById('waitingCount').innerText = stats.waiting;
+                document.getElementById('avgWait').innerHTML = `${stats.averageWaitTime}<small style="font-size: 1rem; font-weight: 400;"> min</small>`;
+
+                // Fila de Espera
+                const waitingRes = await fetch(`/api/tickets/waiting?unitId=${session.unit.id}`);
+                const waiting = await waitingRes.json();
+                
+                const tbody = document.getElementById('waitingList');
+                if (waiting.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 2rem 0; color: var(--text-muted);">Fila vazia</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = waiting.map(t => {
+                    const waitTimeMin = Math.max(0, Math.floor((new Date() - new Date(t.createdAt)) / 1000 / 60));
+                    const isLongWait = waitTimeMin >= 3;
+                    const waitStyle = isLongWait ? 'color: var(--accent); font-weight: 600;' : '';
+
+                    return `
+                        <tr>
+                            <td style="padding: 0.75rem 0; font-weight: 700; color: white;">${t.code}</td>
+                            <td style="padding: 0.75rem 0;">${t.type}</td>
+                            <td style="padding: 0.75rem 0;">
+                                <span class="badge-status ${t.isPriority ? 'badge-priority' : 'badge-normal'}">
+                                    ${t.isPriority ? 'PRIO' : 'NORMAL'}
+                                </span>
+                            </td>
+                            <td style="padding: 0.75rem 0; text-align: right; ${waitStyle}">${waitTimeMin} min</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error("Erro ao atualizar estatísticas do guichê:", err);
+            }
+        }
+
+        // Websockets listener para manter atualizado quando houver alterações
+        socket.on('ticket_issued', (ticket) => {
+            if (session && ticket.unitId === session.unit.id) {
+                updateStats();
+            }
+        });
+
+        socket.on('queue_updated', () => {
+            if (session) {
+                updateStats();
+            }
+        });
+
+        // Restaurar sessão automaticamente se atualizada a página
+        window.onload = () => {
+            const savedSession = sessionStorage.getItem('sga_session');
+            if (savedSession) {
+                const parsed = JSON.parse(savedSession);
+                session = parsed.session;
+                boxNumber = parsed.boxNumber;
+                setupDashboard();
+            }
+            // Auto update de minutos na tabela a cada 30 segundos
+            setInterval(() => {
+                if (session) updateStats();
+            }, 30000);
+        };
+    </script>
+</body>
+</html>

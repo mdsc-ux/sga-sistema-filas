@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGA - Atendimento Remoto</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        .remote-card {
+            max-width: 500px;
+            width: 100%;
+            padding: 2.5rem;
+            margin: 5vh auto;
+            text-align: center;
+            border: 1px solid var(--glass-border);
+        }
+        .position-circle {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            background: rgba(99, 102, 241, 0.1);
+            border: 4px solid var(--primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 2rem auto;
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
+            transition: all 0.5s ease;
+        }
+        .position-circle.called {
+            border-color: var(--accent);
+            background: rgba(244, 63, 94, 0.1);
+            box-shadow: 0 0 30px rgba(244, 63, 94, 0.4);
+            animation: pulse 1.5s infinite;
+        }
+        .form-select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            color: white;
+            font-size: 1rem;
+            margin-bottom: 1.5rem;
+            outline: none;
+        }
+        .form-select option {
+            background: var(--bg);
+            color: white;
+        }
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            cursor: pointer;
+            text-align: left;
+        }
+        .checkbox-container input {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        .notification-banner {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid #10b981;
+            padding: 1rem;
+            border-radius: 12px;
+            color: #10b981;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+    </div>
+
+    <header>
+        <div class="logo">SGA REMOTO</div>
+        <div id="connectionStatus" style="font-size: 0.8rem; color: #10b981; display: flex; align-items: center; gap: 0.5rem;">
+            <span style="width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></span> Conectado
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Banner de Permissão de Notificações -->
+        <div id="notificationRequestBanner" class="glass-card" style="padding: 1.5rem; margin-bottom: 2rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; border-color: var(--primary);">
+            <div>
+                <h4 style="margin-bottom: 0.25rem;">Habilitar Notificações</h4>
+                <p style="color: var(--text-muted); font-size: 0.85rem;">Receba um alerta no seu celular/computador quando for sua vez.</p>
+            </div>
+            <button onclick="requestNotificationPermission()" class="btn btn-primary" style="padding: 0.5rem 1.5rem; font-size: 0.9rem;">Habilitar</button>
+        </div>
+
+        <!-- Tela de Geração de Senha Remota -->
+        <section id="issueScreen" class="animate-fade">
+            <div class="glass-card remote-card">
+                <h1 style="font-size: 2rem; margin-bottom: 1rem;">Atendimento Digital</h1>
+                <p style="color: var(--text-muted); margin-bottom: 2.5rem;">Pegue uma senha virtual e acompanhe a fila sem sair de casa.</p>
+
+                <div style="text-align: left; margin-bottom: 0.5rem;">
+                    <label style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Escolha a Unidade</label>
+                </div>
+                <select id="unitSelect" class="form-select">
+                    <!-- Preenchido via API -->
+                </select>
+
+                <div style="text-align: left; margin-bottom: 0.5rem;">
+                    <label style="color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px;">Escolha o Serviço</label>
+                </div>
+                <select id="serviceSelect" class="form-select">
+                    <option value="GERAL">Atendimento Geral (Caixa / Pagamentos)</option>
+                    <option value="GERENCIA">Gerência e Negócios</option>
+                </select>
+
+                <label class="checkbox-container">
+                    <input type="checkbox" id="isPriorityCheckbox">
+                    <div>
+                        <strong style="display: block;">Necessito de Prioridade</strong>
+                        <span style="color: var(--text-muted); font-size: 0.8rem;">Idosos, PCD, gestantes e lactantes</span>
+                    </div>
+                </label>
+
+                <button onclick="issueRemoteTicket()" class="btn btn-primary" style="width: 100%;">ENTRAR NA FILA DIGITAL</button>
+            </div>
+        </section>
+
+        <!-- Tela de Acompanhamento da Senha -->
+        <section id="statusScreen" style="display: none;" class="animate-fade">
+            <div class="glass-card remote-card">
+                <div id="notifyBanner" class="notification-banner">Você é o próximo! Aproxime-se do guichê.</div>
+                
+                <h2 id="remoteUnitName" style="color: var(--primary); font-size: 1.5rem; font-weight: 700;">Unidade</h2>
+                <p id="remoteUnitAddress" style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;"></p>
+                
+                <hr style="border: 0; border-top: 1px solid var(--glass-border); margin: 1.5rem 0;">
+
+                <p style="color: var(--text-muted); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 2px;">Sua Senha Virtual</p>
+                <div id="remoteCode" class="ticket-badge" style="font-size: 6rem; margin: 0.5rem 0; font-weight: 900; background: linear-gradient(to right, #818cf8, #f43f5e); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">----</div>
+                <p id="remoteType" style="font-weight: 600; color: var(--text-muted); margin-bottom: 1.5rem;"></p>
+
+                <!-- Posição da Fila -->
+                <div id="posCircle" class="position-circle">
+                    <span id="remotePosition" style="font-size: 3rem; font-weight: 900; line-height: 1;">0</span>
+                    <span style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem; font-weight: 600; text-transform: uppercase;">Pessoas Atrás</span>
+                </div>
+
+                <div style="margin-bottom: 2.5rem;">
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">Tempo de espera estimado:</p>
+                    <h3 id="remoteWaitEstimate" style="font-size: 1.8rem; font-weight: 800;">-- min</h3>
+                </div>
+
+                <div style="display: flex; gap: 1rem;">
+                    <button onclick="cancelRemoteTicket()" class="btn" style="background: rgba(244,63,94,0.1); border: 1px solid var(--accent); color: var(--accent); flex: 1;">DESISTIR / DESATIVAR</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Som de Notificação -->
+    <audio id="calledAudio" src="https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3"></audio>
+
+    <script>
+        const socket = io();
+        let activeTicket = null;
+        let token = null;
+        const calledAudio = document.getElementById('calledAudio');
+
+        async function init() {
+            // Checar se já tem notificação habilitada
+            if (Notification.permission === 'granted' || Notification.permission === 'denied') {
+                document.getElementById('notificationRequestBanner').style.display = 'none';
+            }
+
+            // Checar se o cidadão já tem uma senha ativa no localStorage
+            token = localStorage.getItem('sga_remote_token');
+            if (token) {
+                await checkStatus();
+            } else {
+                await loadUnits();
+            }
+        }
+
+        async function loadUnits() {
+            try {
+                const res = await fetch('/api/units');
+                const units = await res.json();
+                const select = document.getElementById('unitSelect');
+                
+                select.innerHTML = units.map(u => `
+                    <option value="${u.id}">${u.name} - ${u.address}</option>
+                `).join('');
+            } catch (err) {
+                console.error("Erro ao carregar unidades:", err);
+            }
+        }
+
+        function requestNotificationPermission() {
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    document.getElementById('notificationRequestBanner').style.display = 'none';
+                    new Notification("SGA Remoto", { body: "Notificações habilitadas com sucesso!" });
+                } else {
+                    document.getElementById('notificationRequestBanner').style.display = 'none';
+                }
+            });
+        }
+
+        async function issueRemoteTicket() {
+            const unitId = document.getElementById('unitSelect').value;
+            const type = document.getElementById('serviceSelect').value;
+            const isPriority = document.getElementById('isPriorityCheckbox').checked;
+
+            // Criar token aleatório seguro para persistência remota
+            token = 't_' + Math.random().toString(36).substr(2, 9) + Date.now().toString(36);
+
+            try {
+                const response = await fetch('/api/tickets', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        unitId,
+                        type,
+                        isPriority,
+                        isRemote: true,
+                        remoteToken: token
+                    })
+                });
+
+                if (!response.ok) throw new Error();
+                
+                activeTicket = await response.json();
+                localStorage.setItem('sga_remote_token', token);
+                
+                // Entrar na sala de socket da unidade
+                socket.emit('join_unit', { unitId });
+                
+                showStatusPage();
+            } catch (err) {
+                alert('Erro ao gerar senha remota.');
+            }
+        }
+
+        async function checkStatus() {
+            if (!token) return;
+
+            try {
+                const response = await fetch(`/api/tickets/remote/${token}`);
+                if (!response.ok) {
+                    // Se o servidor retornar 404, significa que a senha expirou ou foi atendida/finalizada
+                    clearRemoteTicket();
+                    return;
+                }
+
+                const status = await response.json();
+                activeTicket = status.ticket;
+                
+                // Conectar no socket da unidade
+                socket.emit('join_unit', { unitId: activeTicket.unitId });
+
+                showStatusPage(status);
+            } catch (err) {
+                console.error("Erro ao checar status da senha:", err);
+            }
+        }
+
+        function showStatusPage(statusData) {
+            document.getElementById('issueScreen').style.display = 'none';
+            document.getElementById('statusScreen').style.display = 'block';
+
+            document.getElementById('remoteCode').innerText = activeTicket.code;
+            document.getElementById('remoteType').innerText = activeTicket.isPriority ? 'ATENDIMENTO PRIORITÁRIO' : `SERVIÇO: ${activeTicket.type}`;
+            
+            // Buscar info da unidade
+            fetch('/api/units')
+                .then(r => r.json())
+                .then(units => {
+                    const u = units.find(unit => unit.id === activeTicket.unitId);
+                    if (u) {
+                        document.getElementById('remoteUnitName').innerText = u.name;
+                        document.getElementById('remoteUnitAddress').innerText = u.address;
+                    }
+                });
+
+            updateDisplay(statusData);
+        }
+
+        function updateDisplay(statusData) {
+            if (!statusData) {
+                // Se não passou os dados, busca do servidor
+                fetch(`/api/tickets/remote/${token}`)
+                    .then(r => r.ok ? r.json() : null)
+                    .then(data => {
+                        if (data) updateDisplay(data);
+                    });
+                return;
+            }
+
+            const ticket = statusData.ticket;
+            const position = statusData.position;
+            const waitEstimate = statusData.estimatedWaitMinutes;
+
+            const posCircle = document.getElementById('posCircle');
+            const posText = document.getElementById('remotePosition');
+            const waitText = document.getElementById('remoteWaitEstimate');
+            const notifyBanner = document.getElementById('notifyBanner');
+
+            // Atualiza posição
+            posText.innerText = position;
+            waitText.innerText = `${waitEstimate} min`;
+
+            if (ticket.status === 'CALLED') {
+                posCircle.classList.add('called');
+                posCircle.querySelector('span:last-child').innerText = 'DIRIJA-SE AO';
+                posText.innerText = `G-${ticket.boxNumber}`;
+                posText.style.fontSize = '2.2rem';
+                waitText.innerText = `CHAMADO!`;
+                waitText.style.color = 'var(--accent)';
+                notifyBanner.innerText = `Sua senha ${ticket.code} foi chamada no Guichê ${ticket.boxNumber}!`;
+                notifyBanner.style.display = 'block';
+                notifyBanner.style.background = 'rgba(244,63,94,0.15)';
+                notifyBanner.style.borderColor = 'var(--accent)';
+                notifyBanner.style.color = 'var(--accent)';
+
+                // Notificar usuário (Som e Push)
+                triggerCallAlert(ticket);
+            } else if (ticket.status === 'SERVING') {
+                posCircle.classList.remove('called');
+                posCircle.querySelector('span:last-child').innerText = 'EM';
+                posText.innerText = `ATEND.`;
+                posText.style.fontSize = '2.2rem';
+                waitText.innerText = `Guichê ${ticket.boxNumber}`;
+                notifyBanner.style.display = 'none';
+            } else {
+                // WAITING
+                posCircle.classList.remove('called');
+                posCircle.querySelector('span:last-child').innerText = 'Pessoas na Frente';
+                posText.innerText = position;
+                posText.style.fontSize = '3rem';
+                
+                if (position === 0) {
+                    notifyBanner.innerText = "Você é o próximo! Aproxime-se dos guichês.";
+                    notifyBanner.style.display = 'block';
+                } else if (position <= 2) {
+                    notifyBanner.innerText = `Restam apenas ${position} pessoas. Aproxime-se da unidade.`;
+                    notifyBanner.style.display = 'block';
+                } else {
+                    notifyBanner.style.display = 'none';
+                }
+            }
+        }
+
+        let alertTriggered = false;
+        function triggerCallAlert(ticket) {
+            if (alertTriggered) return; // Evita tocar várias vezes seguidas
+            alertTriggered = true;
+
+            // Alerta sonoro
+            calledAudio.currentTime = 0;
+            calledAudio.play().catch(e => {});
+
+            // Notificação Push do Navegador
+            if (Notification.permission === 'granted') {
+                new Notification("Sua senha foi chamada!", {
+                    body: `Senha ${ticket.code} chamada no Guichê ${ticket.boxNumber}.`,
+                    icon: 'https://cdn-icons-png.flaticon.com/512/2645/2645897.png'
+                });
+            }
+        }
+
+        async function cancelRemoteTicket() {
+            if (!confirm('Deseja realmente cancelar sua senha virtual? Você perderá sua posição na fila.')) return;
+            
+            try {
+                // Primeiro precisamos pegar o ID da senha
+                const resStatus = await fetch(`/api/tickets/remote/${token}`);
+                if (resStatus.ok) {
+                    const data = await resStatus.json();
+                    await fetch(`/api/tickets/${data.ticket.id}/cancel`, { method: 'PUT' });
+                }
+            } catch (err) {
+                console.error(err);
+            }
+
+            clearRemoteTicket();
+        }
+
+        function clearRemoteTicket() {
+            localStorage.removeItem('sga_remote_token');
+            activeTicket = null;
+            token = null;
+            alertTriggered = false;
+            
+            document.getElementById('issueScreen').style.display = 'block';
+            document.getElementById('statusScreen').style.display = 'none';
+            
+            loadUnits();
+        }
+
+        // WebSockets triggers
+        socket.on('queue_updated', () => {
+            if (token) {
+                checkStatus();
+            }
+        });
+
+        socket.on('ticket_called', (ticket) => {
+            // Se a minha senha foi chamada
+            if (activeTicket && ticket.id === activeTicket.id) {
+                checkStatus();
+            }
+        });
+
+        window.onload = init;
+    </script>
+</body>
+</html>
